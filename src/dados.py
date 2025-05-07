@@ -106,3 +106,18 @@ elif opcao_grafico_principal == "Análise de Placar":
     plt.ylabel("Total de Gols")
     st.pyplot(plt)
     plt.clf()
+
+# Elaboração do gráfico de distribuição de placar (boxplot)
+elif opcao_grafico_principal == "Distribuição de Placar":
+    st.subheader("Distribuição de Placar")
+    
+    # Distribuição em boxplot dos placares - mandantes e visitantes
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.boxplot([df["mandante_Placar"], df["visitante_Placar"]],
+                labels=["Mandantes", "Visitantes"],
+                patch_artist=True,
+                boxprops=dict(facecolor="blue"))
+
+    ax.set_title("Distribuição dos Placar - Mandantes vs Visitantes")
+    ax.set_ylabel("Gols")
+    st.pyplot(fig)
