@@ -89,3 +89,20 @@ elif opcao_grafico_principal == "Desempenho do Time":
     plt.tight_layout()
     st.pyplot(fig)
     plt.clf()
+
+# Elaboração do gráfico de análise de placar
+elif opcao_grafico_principal == "Análise de Placar":
+    st.subheader("Análise de Placar")
+
+    # Gráfico com total de gols mandante vs visitante
+    total_mandantes = df["mandante_Placar"].sum()
+    total_visitantes = df["visitante_Placar"].sum()
+
+    plt.figure(figsize=(6, 4))
+    plt.bar(["MANDANTES", "VISITANTES"], [total_mandantes, total_visitantes], color=["blue", "red"])
+
+    plt.title("Total de Gols: Mandantes vs Visitantes")
+    plt.xlabel("Categoria")
+    plt.ylabel("Total de Gols")
+    st.pyplot(plt)
+    plt.clf()
