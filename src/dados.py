@@ -64,3 +64,28 @@ if opcao_grafico_principal == "Confrontos":
 
     else:
         st.warning("Nenhum confronto encontrado entre os times selecionados.")
+
+
+# Elaboração do Gráfico de Desempenho do time
+elif opcao_grafico_principal == "Desempenho do Time":
+    st.subheader("Desempenho do Time")
+
+    # Gráfico total de vitórias para cada time
+    vitorias_mandante = df[df['mandante'] == df['vencedor']]['mandante'].value_counts()
+    vitorias_visitante = df[df['visitante'] == df['vencedor']]['visitante'].value_counts()
+    total_vitorias = vitorias_mandante.add(vitorias_visitante, fill_value=0).sort_values(ascending=False)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    total_vitorias.plot(kind='bar', color='blue', ax=ax)
+
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Total de Vitórias')
+    ax.set_title('Total de Vitórias por Time')
+
+    for label in ax.get_xticklabels():
+        label.set_rotation(45)
+        label.set_horizontalalignment('right')
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.clf()
