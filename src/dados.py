@@ -189,3 +189,14 @@ elif opcao == "Machine Learning - Classificação":
 
     melhor_modelo = resultados_df.index[0]
     st.success(f"O modelo com melhor desempenho foi: {melhor_modelo} com acurácia de {resultados_df.iloc[0,0]:.2f}")
+
+    # Matriz de Confusão
+    st.subheader("Matriz de Confusão")
+    modelo_final = modelos[melhor_modelo]
+    y_pred_final = modelo_final.predict(X_test)
+    cm = confusion_matrix(y_test, y_pred_final)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
+
+    fig, ax = plt.subplots()
+    disp.plot(ax=ax)
+    st.pyplot(fig)
