@@ -52,7 +52,9 @@ if opcao == "Confrontos":
 
         fig, ax = plt.subplots()
         resultados.plot(kind='bar', color=cores, ax=ax)
-        ax.set_title(f"Vitórias entre {time_mandante} e {time_visitante}")
+        ax.set_title("Vitórias entre Mandante e Visitante")
+        ax.tick_params(axis='x', rotation=0)
+        ax.set_xlabel("")
         st.pyplot(fig)
     else:
         st.warning("Nenhum confronto encontrado.")
