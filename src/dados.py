@@ -31,26 +31,28 @@ if opcao_grafico_principal == "Confrontos":
         # Definição da lógica para o vencedor
         def determinar_vencedor(row):
             if row["mandante_Placar"] > row["visitante_Placar"]:
-                return row["mandante"]
+                return "Mandante"
             elif row["mandante_Placar"] < row["visitante_Placar"]:
-                return row["visitante"]
+                return "Visitante"
             else:
                 return "Empate"
 
         confrontos["vencedor"] = confrontos.apply(determinar_vencedor, axis=1)
         vitorias = confrontos["vencedor"].value_counts()
 
+        # Define a ordem desejada para as barras
+        ordem_barras = ["Mandante", "Empate", "Visitante"]
+        
+        # Reindexa a série 'vitorias' para garantir a ordem e preencher com 0 se um resultado não existir
+        vitorias = vitorias.reindex(ordem_barras, fill_value=0)
+
         # Determinar as cores das barras para facilitar a visualização
-        cores = []
-        for vencedor in vitorias.index:
-            if vencedor == time_mandante:
-                cores.append('blue')
-
-            elif vencedor == 'Empate':
-                cores.append('yellow')
-
-            else:
-                cores.append('red')
+        cores_map = {
+            "Mandante": "blue",
+            "Empate": "yellow",
+            "Visitante": "red"
+        }
+        cores = [cores_map[vencedor] for vencedor in vitorias.index]
 
         # Elaboração do gráfico de vitórias
         fig, ax = plt.subplots(figsize=(8, 5))
