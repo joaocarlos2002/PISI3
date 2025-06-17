@@ -122,3 +122,70 @@ elif opcao == "Clusterização dos Times":
 
     st.subheader("Dados dos Clusters")
     st.dataframe(dados_cluster)
+
+    # ==================== Machine Learning ====================
+elif opcao == "Machine Learning - Classificação":
+    st.subheader("Classificação de Resultados")
+
+    # ====== Novo conjunto de features baseado no histórico ======
+    desempenho_mandante = df.groupby("mandante").agg({
+        "mandante_Placar": "mean",
+        "visitante_Placar": "mean",
+        "saldo_gols": "mean",
+        "vencedor": lambda x: (x == "Mandante").mean()
+    }).rename(columns={
+        "mandante_Placar": "media_gols_mandante",
+        "visitante_Placar": "media_gols_sofridos_mandante",
+        "saldo_gols": "media_saldo_mandante",
+        "vencedor": "taxa_vitorias_mandante"
+    })
+
+    desempenho_visitante = df.groupby("visitante").agg({
+        "visitante_Placar": "mean",
+        "mandante_Placar": "mean",
+        "saldo_gols": "mean",
+        "vencedor": lambda x: (x == "Visitante").mean()
+    }).rename(columns={
+        "visitante_Placar": "media_gols_visitante",
+        "mandante_Placar": "media_gols_sofridos_visitante",
+        "saldo_gols": "media_saldo_visitante",
+        "vencedor": "taxa_vitorias_visitante"
+    })
+
+    df_ml = df.copy()
+
+    df_ml = df_ml.merge(desempenho_mandante, left_on="mandante", right_index=True)
+    df_ml = df_ml.merge(desempenho_visitante, left_on="visitante", right_index=True)
+
+    features = [
+        "media_gols_mandante", "media_gols_sofridos_mandante", "media_saldo_mandante", "taxa_vitorias_mandante",
+        "media_gols_visitante", "media_gols_sofridos_visitante", "media_saldo_visitante", "taxa_vitorias_visitante"
+    ]
+
+    X = df_ml[features]
+    y = df_ml["vencedor"]
+
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.3, random_state=42)
+
+    modelos = {
+        "Random Forest": RandomForestClassifier(),
+        "KNN": KNeighborsClassifier(),
+        "Regressão Logística": LogisticRegression(max_iter=1000)
+    }
+
+    resultados = {}
+
+    for nome, modelo in modelos.items():
+        modelo.fit(X_train, y_train)
+        y_pred = modelo.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        resultados[nome] = acc
+
+    resultados_df = pd.DataFrame.from_dict(resultados, orient="index", columns=["Acurácia"]).sort_values(by="Acurácia", ascending=False)
+    st.dataframe(resultados_df)
+
+    melhor_modelo = resultados_df.index[0]
+    st.success(f"O modelo com melhor desempenho foi: {melhor_modelo} com acurácia de {resultados_df.iloc[0,0]:.2f}")
