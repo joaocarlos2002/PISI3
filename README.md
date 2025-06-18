@@ -1,6 +1,6 @@
 # 🚀 {PISI3}
 
-Este repositório contém um projeto desenvolvido utilizando Python. A seguir, você encontrará dicas para conseguir ter acesso
+Este repositório contém um projeto de Machine Learning desenvolvido utilizando Python. A seguir, você encontrará dicas para conseguir ter acesso
 
 
 ## Passo 1️⃣: Clonar o repositório
