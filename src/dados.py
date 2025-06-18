@@ -37,9 +37,11 @@ with st.sidebar:
     # Filtro de Tipo de Análise
     st.subheader("Filtro de Gráfico/Análise")
     opcao = st.selectbox("Selecione o Tipo de Análise", 
-                          ["Confrontos", "Desempenho do Time", "Análise de Placar", 
-                           "Distribuição de Placar", "Clusterização dos Times", 
-                           "Machine Learning - Classificação"])
+    ["Confrontos", "Desempenho do Time", "Análise de Placar", 
+     "Distribuição de Placar", "Clusterização dos Times", 
+     "Machine Learning - Classificação",
+     "Distribuição dos Erros - Melhor Modelo"]
+)
 
 # ==================== Gráficos ====================
 if opcao == "Confrontos":
@@ -202,3 +204,82 @@ elif opcao == "Machine Learning - Classificação":
     fig, ax = plt.subplots()
     disp.plot(ax=ax)
     st.pyplot(fig)
+
+elif opcao == "Distribuição dos Erros - Melhor Modelo":
+    st.subheader("Distribuição dos Erros na Regressão Logística")
+
+    # Usando as mesmas features e dataset preparados no bloco de Machine Learning
+    desempenho_mandante = df.groupby("mandante").agg({
+        "mandante_Placar": "mean",
+        "visitante_Placar": "mean",
+        "saldo_gols": "mean",
+        "vencedor": lambda x: (x == "Mandante").mean()
+    }).rename(columns={
+        "mandante_Placar": "media_gols_mandante",
+        "visitante_Placar": "media_gols_sofridos_mandante",
+        "saldo_gols": "media_saldo_mandante",
+        "vencedor": "taxa_vitorias_mandante"
+    })
+
+    desempenho_visitante = df.groupby("visitante").agg({
+        "visitante_Placar": "mean",
+        "mandante_Placar": "mean",
+        "saldo_gols": "mean",
+        "vencedor": lambda x: (x == "Visitante").mean()
+    }).rename(columns={
+        "visitante_Placar": "media_gols_visitante",
+        "mandante_Placar": "media_gols_sofridos_visitante",
+        "saldo_gols": "media_saldo_visitante",
+        "vencedor": "taxa_vitorias_visitante"
+    })
+
+    df_ml = df.copy()
+
+    df_ml = df_ml.merge(desempenho_mandante, left_on="mandante", right_index=True)
+    df_ml = df_ml.merge(desempenho_visitante, left_on="visitante", right_index=True)
+
+    features = [
+        "media_gols_mandante", "media_gols_sofridos_mandante", "media_saldo_mandante", "taxa_vitorias_mandante",
+        "media_gols_visitante", "media_gols_sofridos_visitante", "media_saldo_visitante", "taxa_vitorias_visitante"
+    ]
+
+    X = df_ml[features]
+    y = df_ml["vencedor"]
+
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, test_size=0.3, random_state=42
+    )
+
+    # Treina apenas a Regressão Logística (melhor modelo)
+    modelo = LogisticRegression(max_iter=1000)
+    modelo.fit(X_train, y_train)
+
+    y_pred = modelo.predict(X_test)
+
+    df_erro = pd.DataFrame({
+        "Real": le.inverse_transform(y_test),
+        "Previsto": le.inverse_transform(y_pred)
+    })
+
+    df_erro["Resultado"] = df_erro.apply(
+        lambda x: "Acerto" if x["Real"] == x["Previsto"] else "Erro", axis=1
+    )
+
+    # Gráfico de distribuição dos erros
+    fig, ax = plt.subplots(figsize=(8, 5))
+    df_erro.groupby(["Real", "Resultado"]).size().unstack().plot(
+        kind="bar", stacked=True, ax=ax, color=["green", "red"]
+    )
+    ax.set_title("Distribuição dos Erros na Regressão Logística")
+    ax.set_ylabel("Quantidade")
+    ax.set_xlabel("Classe Real")
+    plt.xticks(rotation=0)
+
+    st.pyplot(fig)
+
+    # Mostra tabela resumo
+    st.subheader("Tabela de Erros e Acertos")
+    st.dataframe(df_erro.groupby(["Real", "Resultado"]).size().unstack().fillna(0))
