@@ -39,6 +39,7 @@ with st.sidebar:
     opcao = st.selectbox("Selecione o Tipo de Análise", 
     ["Confrontos", "Desempenho do Time", "Análise de Placar", 
      "Distribuição de Placar", "Clusterização dos Times", 
+     "Método do Cotovelo (K-Means)", # <--- Nova opção adicionada aqui
      "Machine Learning - Classificação",
      "Distribuição dos Erros - Melhor Modelo"]
 )
@@ -89,7 +90,46 @@ elif opcao == "Distribuição de Placar":
     ax.set_title("Distribuição dos Placar")
     st.pyplot(fig)
 
-    # ==================== Clusterização ====================
+# ==================== Método do Cotovelo ====================
+elif opcao == "Método do Cotovelo (K-Means)":
+    st.subheader("Método do Cotovelo para K-Means")
+
+    dados_cluster = df.groupby("mandante").agg({
+        "mandante_Placar": "sum",
+        "visitante_Placar": "sum",
+        "saldo_gols": "sum",
+        "vencedor": lambda x: (x == "Mandante").sum()
+    }).reset_index()
+
+    dados_cluster.rename(columns={
+        "mandante_Placar": "gols_feitos",
+        "visitante_Placar": "gols_sofridos",
+        "vencedor": "vitorias"
+    }, inplace=True)
+
+    X = dados_cluster[["gols_feitos", "gols_sofridos", "saldo_gols", "vitorias"]]
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    wcss = []
+    # Testar K de 1 a 10 (ou um range que faça sentido para seus dados)
+    max_k = 10 
+    for i in range(1, max_k + 1):
+        kmeans = KMeans(n_clusters=i, random_state=42, n_init='auto')
+        kmeans.fit(X_scaled)
+        wcss.append(kmeans.inertia_)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(range(1, max_k + 1), wcss, marker='o')
+    ax.set_title('Método do Cotovelo')
+    ax.set_xlabel('Número de Clusters (K)')
+    ax.set_ylabel('WCSS (Soma dos Quadrados Dentro do Cluster)')
+    ax.grid(True)
+    st.pyplot(fig)
+
+    st.info("O 'cotovelo' no gráfico indica o número ideal de clusters. É o ponto onde a curva se dobra e a diminuição no WCSS se torna menos acentuada.")
+
+# ==================== Clusterização ====================
 elif opcao == "Clusterização dos Times":
     st.subheader("Clusterização dos Times")
 
@@ -205,6 +245,7 @@ elif opcao == "Machine Learning - Classificação":
     disp.plot(ax=ax)
     st.pyplot(fig)
 
+# ==================== Distribuição dos Erros ====================
 elif opcao == "Distribuição dos Erros - Melhor Modelo":
     st.subheader("Distribuição dos Erros na Regressão Logística")
 
@@ -283,3 +324,4 @@ elif opcao == "Distribuição dos Erros - Melhor Modelo":
     # Mostra tabela resumo
     st.subheader("Tabela de Erros e Acertos")
     st.dataframe(df_erro.groupby(["Real", "Resultado"]).size().unstack().fillna(0))
+
