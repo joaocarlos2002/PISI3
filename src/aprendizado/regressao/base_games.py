@@ -8,7 +8,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, validation_curve
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
 
 class LogisticRegressionGamePredictor:
     def __init__(self, data_path='src/data/data-aprendizado/dados_consolidados.pkl'):
@@ -239,40 +238,6 @@ class LogisticRegressionGamePredictor:
         plt.savefig(f'{self.figures_path}/class_distribution.png', dpi=300, bbox_inches='tight')
         plt.close()
 
-    def plot_kmeans_pca_clusters(self, n_clusters=3):
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        X = self.X_train
-        y = self.y_train
-        clusters = kmeans.fit_predict(X)
-        pca = PCA(n_components=2, random_state=42)
-        X_pca = pca.fit_transform(X)
-        plt.figure(figsize=(10, 8))
-        scatter = plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='Set1', alpha=0.7, label='Clusters')
-        centers_pca = pca.transform(kmeans.cluster_centers_)
-        plt.scatter(centers_pca[:, 0], centers_pca[:, 1], c='black', marker='X', s=200, label='Centros')
-        plt.xlabel('PCA 1')
-        plt.ylabel('PCA 2')
-        plt.title('KMeans + PCA (2D) - Clusters nos Dados de Treino')
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(f'{self.figures_path}/kmeans_pca_clusters.png', dpi=300, bbox_inches='tight')
-        plt.close()
-
-    def plot_kmeans_cluster_distribution(self, n_clusters=3):
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        clusters = kmeans.fit_predict(self.X_train)
-        unique, counts = np.unique(clusters, return_counts=True)
-        plt.figure(figsize=(8, 6))
-        bars = plt.bar([f'Cluster {i+1}' for i in unique], counts, color='lightseagreen')
-        for bar, value in zip(bars, counts):
-            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, str(value), ha='center', va='bottom', fontweight='bold')
-        plt.xlabel('Clusters')
-        plt.ylabel('Número de Amostras')
-        plt.title('Distribuição dos Clusters (KMeans) nos Dados de Treino')
-        plt.tight_layout()
-        plt.savefig(f'{self.figures_path}/kmeans_cluster_distribution.png', dpi=300, bbox_inches='tight')
-        plt.close()
-
     def generate_all_figures(self):
         self.create_figures_directory()
         print("Gerando figuras estatísticas para Regressão Logística...")
@@ -290,10 +255,6 @@ class LogisticRegressionGamePredictor:
         print("✓ Melhores hiperparâmetros salvos")
         self.plot_class_distribution()
         print("✓ Distribuição das classes salva")
-        self.plot_kmeans_pca_clusters()
-        print("✓ KMeans PCA clusters salvo")
-        self.plot_kmeans_cluster_distribution()
-        print("✓ Distribuição dos clusters salva")
         print(f"\nTodas as figuras foram salvas em: {self.figures_path}")
 
 def main():
