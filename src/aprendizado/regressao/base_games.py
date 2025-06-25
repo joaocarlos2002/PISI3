@@ -7,6 +7,7 @@ import os
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, validation_curve
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.decomposition import PCA
 
 class LogisticRegressionGamePredictor:
     def __init__(self, data_path='src/data/data-aprendizado/dados_consolidados.pkl'):
