@@ -8,6 +8,8 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split, cross_val_score, validation_curve
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, confusion_matrix
 from imblearn.over_sampling import SMOTE
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 class KNNGamePredictor:
     def __init__(self, data_path='src/data/data-aprendizado/dados_consolidados.pkl'):
@@ -194,6 +196,38 @@ class KNNGamePredictor:
         plt.savefig(f'{self.figures_path}/class_distribution.png', dpi=300, bbox_inches='tight')
         plt.close()
 
+    def plot_kmeans_clusters(self, X, y, feature_names, save_path, n_clusters=3):
+        pca = PCA(n_components=2)
+        X_pca = pca.fit_transform(X)
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+        clusters = kmeans.fit_predict(X)
+        plt.figure(figsize=(10, 7))
+        scatter = plt.scatter(X_pca[:, 0], X_pca[:, 1], c=clusters, cmap='viridis', alpha=0.7, s=60)
+        centers = pca.transform(kmeans.cluster_centers_)
+        plt.scatter(centers[:, 0], centers[:, 1], c='red', s=200, marker='X', label='Centroides')
+        plt.xlabel('PCA 1')
+        plt.ylabel('PCA 2')
+        plt.title('Clusterização K-Means (PCA 2D)')
+        plt.legend(*scatter.legend_elements(), title="Cluster")
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+    def plot_cluster_distribution(self, X, save_path, n_clusters=3):
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+        clusters = kmeans.fit_predict(X)
+        unique, counts = np.unique(clusters, return_counts=True)
+        plt.figure(figsize=(7, 5))
+        plt.bar([f'Cluster {i}' for i in unique], counts, color=['#2563eb', '#facc15', '#22c55e'])
+        plt.xlabel('Cluster')
+        plt.ylabel('Nº de Amostras')
+        plt.title('Distribuição dos Clusters (K-Means)')
+        for i, v in enumerate(counts):
+            plt.text(i, v + 2, str(v), ha='center', fontweight='bold')
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
     def generate_all_figures(self):
         self.create_figures_directory()
         
@@ -213,6 +247,11 @@ class KNNGamePredictor:
         
         self.plot_class_distribution()
         print("✓ Distribuição das classes salva")
+        
+        # Gera gráficos de clusterização
+        self.plot_kmeans_clusters(self.X_train, self.y_train, self.feature_names, f'{self.figures_path}/kmeans_clusters.png')
+        self.plot_cluster_distribution(self.X_train, f'{self.figures_path}/kmeans_cluster_distribution.png')
+        print("Gráficos de clusterização salvos!")
         
         print(f"\nTodas as figuras foram salvas em: {self.figures_path}")
 
