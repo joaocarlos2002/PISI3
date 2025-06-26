@@ -74,7 +74,6 @@ def mostrar_info_modelo(model_path):
         return None
 
 def carregar_e_testar_modelo(model_path):
-    """Carrega um modelo e testa com dados de exemplo"""
     try:
         with open(model_path, 'rb') as f:
             model_data = pickle.load(f)
@@ -175,7 +174,6 @@ def comparar_modelos():
         print(f"🏆 MELHOR MODELO: {best_model['name']} (Acurácia: {best_model['accuracy']:.4f})")
 
 def fazer_predicao_personalizada():
-    """Permite fazer uma predição personalizada com um modelo escolhido"""
     models = listar_modelos_salvos()
     
     if not models:
@@ -195,7 +193,6 @@ def fazer_predicao_personalizada():
         
         model_type = model_data.get('model_type', 'desconhecido')
         
-        # Inicializar predictor
         if model_type == 'logistic_regression':
             predictor = LogisticRegressionGamePredictor()
         elif model_type == 'knn':
@@ -209,7 +206,6 @@ def fazer_predicao_personalizada():
         if predictor.load_model(model_path) and predictor.load_data():
             print(f"\n✅ Modelo {model_type} carregado!")
             
-            # Fazer predição em uma amostra aleatória
             import random
             sample_idx = random.randint(0, len(predictor.X_test) - 1)
             
@@ -299,5 +295,5 @@ def main():
         except Exception as e:
             print(f"❌ Erro inesperado: {e}")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
