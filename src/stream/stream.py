@@ -160,14 +160,18 @@ if opcao == "Confrontos":
 
 elif opcao == "Desempenho do Time":
     st.subheader("Desempenho dos Times")
-    vitorias_mandante = raw_df[raw_df['mandante'] == raw_df['vencedor']]['mandante'].value_counts()
-    vitorias_visitante = raw_df[raw_df['visitante'] == raw_df['vencedor']]['visitante'].value_counts()
+
+    vitorias_mandante = raw_df[raw_df['vencedor'] == 'Mandante']['mandante'].value_counts()
+    vitorias_visitante = raw_df[raw_df['vencedor'] == 'Visitante']['visitante'].value_counts()
     total_vitorias = (vitorias_mandante.add(vitorias_visitante, fill_value=0)).sort_values(ascending=False)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    total_vitorias.plot(kind='bar', color='blue', ax=ax)
-    ax.set_title('Total de Vitórias por Time')
-    st.pyplot(fig)
+    if not total_vitorias.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        total_vitorias.plot(kind='bar', color='blue', ax=ax)
+        ax.set_title('Total de Vitórias por Time')
+        st.pyplot(fig)
+    else:
+        st.warning("Nenhum dado de vitória encontrado nos registros.")
 
 elif opcao == "Análise de Placar":
     st.subheader("Análise de Placar")
