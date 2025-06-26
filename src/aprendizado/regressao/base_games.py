@@ -4,10 +4,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import time
+import warnings
+from tqdm import tqdm
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, validation_curve
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 from sklearn.decomposition import PCA
+import time
 
 class LogisticRegressionGamePredictor:
     def __init__(self, data_path='src/data/data-aprendizado/dados_consolidados.pkl'):
@@ -40,29 +44,63 @@ class LogisticRegressionGamePredictor:
             return False
 
     def optimize_hyperparameters(self, cv_folds=5, scoring='accuracy'):
-        param_grid = {
-            'C': [0.01, 0.1, 1, 10, 100],
-            'penalty': ['l1', 'l2'],
-            'solver': ['liblinear', 'saga'],
-            'max_iter': [1000, 2000]
-        }
-        grid = GridSearchCV(
-            LogisticRegression(random_state=42), 
-            param_grid, 
-            cv=StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42), 
-            scoring=scoring, 
-            n_jobs=-1, 
-            verbose=0
-        )
-        grid.fit(self.X_train, self.y_train)
-        self.best_params = grid.best_params_
-        self.model = grid.best_estimator_
-        return grid.best_score_
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", message=".*max_iter.*")
+            
+            param_grid = {
+                'C': [0.1, 1, 10, 100],
+                'penalty': ['l2'],
+                'solver': ['liblinear', 'lbfgs'],
+                'max_iter': [10000],
+                'tol': [1e-4]
+            }
+            grid = GridSearchCV(
+                LogisticRegression(random_state=42), 
+                param_grid, 
+                cv=StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42), 
+                scoring=scoring, 
+                n_jobs=-1, 
+                verbose=0
+            )
+            grid.fit(self.X_train, self.y_train)
+            self.best_params = grid.best_params_
+            
+            self.model = LogisticRegression(
+                **self.best_params,
+                random_state=42
+            )
+            return grid.best_score_
 
     def train_model(self, **kwargs):
         if not self.model:
-            self.model = LogisticRegression(max_iter=1000, random_state=42, **(kwargs or {}))
+            default_params = {
+                'max_iter': 10000,
+                'random_state': 42,
+                'tol': 1e-4,
+                'solver': 'lbfgs',
+                'C': 1.0
+            }
+            default_params.update(kwargs or {})
+            self.model = LogisticRegression(**default_params)
         self.model.fit(self.X_train, self.y_train)
+
+    def check_convergence(self):
+        if hasattr(self.model, 'n_iter_'):
+            if isinstance(self.model.n_iter_, np.ndarray):
+                max_iter_reached = np.any(self.model.n_iter_ >= self.model.max_iter)
+            else:
+                max_iter_reached = self.model.n_iter_ >= self.model.max_iter
+            
+            if max_iter_reached:
+                print("⚠️  AVISO: O modelo pode não ter convergido completamente.")
+                print(f"   Iterações utilizadas: {self.model.n_iter_}")
+                print(f"   Máximo de iterações: {self.model.max_iter}")
+                print("   Considere aumentar max_iter ou ajustar a tolerância.")
+            else:
+                print("✅ Modelo convergiu com sucesso!")
+                print(f"   Iterações utilizadas: {self.model.n_iter_}")
+        return True
 
     def evaluate_model(self):
         y_pred = self.model.predict(self.X_test)
@@ -82,10 +120,48 @@ class LogisticRegressionGamePredictor:
         return self.results
 
     def show_coefficients(self):
-        print("\nCOEFICIENTES DO MODELO:")
+        print("\n🔍 ANÁLISE DOS PESOS DAS VARIÁVEIS (REGRESSÃO LOGÍSTICA):")
+        print("=" * 70)
+        
         coef_df = pd.DataFrame(self.model.coef_, columns=self.feature_names)
         coef_df.index = self.label_encoder.inverse_transform(self.model.classes_)
-        print(coef_df.round(3).T)
+        
+        print("\n📊 TABELA COMPLETA DE COEFICIENTES:")
+        print("-" * 70)
+        print(coef_df.round(4).T.to_string())
+        
+        print(f"\n🎯 RANKING DE IMPORTÂNCIA DAS VARIÁVEIS:")
+        print("-" * 70)
+        
+        coef_abs = np.abs(coef_df.values)
+        feature_importance = np.mean(coef_abs, axis=0)
+        
+        importance_ranking = list(zip(self.feature_names, feature_importance))
+        importance_ranking.sort(key=lambda x: x[1], reverse=True)
+        
+        for i, (feature, importance) in enumerate(importance_ranking, 1):
+            if importance > 0.5:
+                impact = "🔴"
+                level = "ALTA"
+            elif importance > 0.2:
+                impact = "🟡"
+                level = "MÉDIA"
+            else:
+                impact = "🟢"
+                level = "BAIXA"
+            
+            print(f"{i:2d}. {impact} {feature:<35} | Importância: {importance:.4f} ({level})")
+        
+        print("\n📝 INTERPRETAÇÃO:")
+        print("• Valores POSITIVOS: aumentam a probabilidade da classe")
+        print("• Valores NEGATIVOS: diminuem a probabilidade da classe")
+        print("• Magnitude maior = maior influência na decisão")
+        
+        print("\n📈 LEGENDA DE IMPORTÂNCIA:")
+        print("🔴 ALTA (> 0.5) - Variável muito influente")
+        print("🟡 MÉDIA (0.2-0.5) - Variável moderadamente influente") 
+        print("🟢 BAIXA (< 0.2) - Variável pouco influente")
+        
         return coef_df
 
     def create_figures_directory(self):
@@ -143,7 +219,7 @@ class LogisticRegressionGamePredictor:
         penalty = self.best_params.get('penalty', 'l2') if self.best_params else 'l2'
         solver = self.best_params.get('solver', 'liblinear') if self.best_params else 'liblinear'
         train_scores, val_scores = validation_curve(
-            LogisticRegression(penalty=penalty, solver=solver, max_iter=2000, random_state=42),
+            LogisticRegression(penalty=penalty, solver=solver, max_iter=10000, random_state=42),
             self.X_train, self.y_train, 
             param_name='C', param_range=C_range,
             cv=5, scoring='accuracy', n_jobs=-1
@@ -194,7 +270,7 @@ class LogisticRegressionGamePredictor:
                 'C': 1.0,
                 'penalty': 'l2',
                 'solver': 'liblinear',
-                'max_iter': 1000
+                'max_iter': 10000
             }
             param_names = list(default_params.keys())
             param_values = [str(v) for v in default_params.values()]
@@ -257,18 +333,137 @@ class LogisticRegressionGamePredictor:
         print("✓ Distribuição das classes salva")
         print(f"\nTodas as figuras foram salvas em: {self.figures_path}")
 
+    def save_model(self, filename=None):
+        if self.model is None:
+            print("❌ Nenhum modelo foi treinado ainda.")
+            return False
+        
+        if filename is None:
+            filename = f'src/data/models/modelo_regressao_treinado.pkl'
+        
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
+        try:
+            model_data = {
+                'model': self.model,
+                'model_type': 'logistic_regression',
+                'best_params': self.best_params,
+                'feature_names': self.feature_names,
+                'class_names': self.class_names,
+                'label_encoder': self.label_encoder,
+                'results': self.results,
+                'training_date': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            with open(filename, 'wb') as f:
+                pickle.dump(model_data, f)
+            
+            print(f"💾 Modelo Regressão Logística salvo com sucesso em: {filename}")
+            print(f"   • Acurácia: {self.results.get('test_accuracy', 0):.4f}")
+            print(f"   • Data do treinamento: {model_data['training_date']}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erro ao salvar modelo: {e}")
+            return False
+
+    def load_model(self, filename):
+        try:
+            with open(filename, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            self.model = model_data['model']
+            self.best_params = model_data.get('best_params', None)
+            self.feature_names = model_data.get('feature_names', None)
+            self.class_names = model_data.get('class_names', ['Empate', 'Mandante', 'Visitante'])
+            self.label_encoder = model_data.get('label_encoder', None)
+            self.results = model_data.get('results', {})
+            
+            print(f"📂 Modelo Regressão Logística carregado com sucesso de: {filename}")
+            print(f"   • Data do treinamento: {model_data.get('training_date', 'Não disponível')}")
+            print(f"   • Acurácia: {self.results.get('test_accuracy', 0):.4f}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erro ao carregar modelo: {e}")
+            return False
+
+    def predict_from_saved_model(self, model_path, X_new):
+        """Carrega um modelo salvo e faz predições em novos dados"""
+        if self.load_model(model_path):
+            try:
+                predictions = self.model.predict(X_new)
+                probabilities = self.model.predict_proba(X_new) if hasattr(self.model, 'predict_proba') else None
+                
+                print(f"🔮 Predições realizadas com sucesso!")
+                print(f"   • {len(predictions)} predições feitas")
+                
+                unique, counts = np.unique(predictions, return_counts=True)
+                for class_idx, count in zip(unique, counts):
+                    class_name = self.class_names[class_idx] if class_idx < len(self.class_names) else f"Classe {class_idx}"
+                    print(f"   • {class_name}: {count} predições")
+                
+                return predictions, probabilities
+            except Exception as e:
+                print(f"❌ Erro ao fazer predições: {e}")
+                return None, None
+        else:
+            return None, None
+
+    def get_model_info(self, model_path):
+        """Mostra informações sobre um modelo salvo sem carregá-lo completamente"""
+        try:
+            with open(model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            print(f"\n📋 INFORMAÇÕES DO MODELO REGRESSÃO LOGÍSTICA ({model_path}):")
+            print("=" * 70)
+            print(f"• Tipo: Regressão Logística")
+            print(f"• Data do treinamento: {model_data.get('training_date', 'Não disponível')}")
+            print(f"• Acurácia de treino: {model_data.get('results', {}).get('train_accuracy', 0):.4f}")
+            print(f"• Acurácia de teste: {model_data.get('results', {}).get('test_accuracy', 0):.4f}")
+            print(f"• Precisão: {model_data.get('results', {}).get('precision', 0):.4f}")
+            print(f"• Recall: {model_data.get('results', {}).get('recall', 0):.4f}")
+            print(f"• F1-Score: {model_data.get('results', {}).get('f1_score', 0):.4f}")
+            
+            if 'best_params' in model_data and model_data['best_params']:
+                print(f"• Melhores hiperparâmetros:")
+                for param, value in model_data['best_params'].items():
+                    print(f"  - {param}: {value}")
+            
+            if 'feature_names' in model_data and model_data['feature_names']:
+                print(f"• Número de features: {len(model_data['feature_names'])}")
+            
+            return model_data
+            
+        except Exception as e:
+            print(f"❌ Erro ao ler informações do modelo: {e}")
+            return None
+
 def main():
     predictor = LogisticRegressionGamePredictor()
     if not predictor.load_data():
         return
+    
+    print("Iniciando otimização de hiperparâmetros...")
     try:
-        predictor.optimize_hyperparameters()
-    except Exception:
-        pass
+        best_score = predictor.optimize_hyperparameters()
+        print(f"Melhor score na validação cruzada: {best_score:.4f}")
+    except Exception as e:
+        print(f"Erro na otimização de hiperparâmetros: {e}")
+        print("Usando parâmetros padrão...")
+    
+    print("Treinando modelo...")
     predictor.train_model()
+    
+    predictor.check_convergence()
+    
     results = predictor.evaluate_model()
     predictor.show_coefficients()
     print(f"\nAcurácia final: {results['test_accuracy']:.4f}")
+    print("\n💾 Salvando modelo treinado...")
+    predictor.save_model()
+    
     predictor.generate_all_figures()
     return predictor
 
