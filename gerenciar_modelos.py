@@ -2,9 +2,14 @@ import pickle
 import pandas as pd
 import numpy as np
 import os
-from src.aprendizado.regressao.base_games import LogisticRegressionGamePredictor
-from src.aprendizado.knn.base_games import KNNGamePredictor
-from src.aprendizado.arvore.base_games import TreeGamePredictor
+import sys
+
+
+sys.path.append('src')
+
+from aprendizado.regressao.base_games import LogisticRegressionGamePredictor
+from aprendizado.knn.base_games import KNNGamePredictor
+from aprendizado.arvore.base_games import TreeGamePredictor
 
 def listar_modelos_salvos():
     models_dir = 'src/data/models'
@@ -169,6 +174,69 @@ def comparar_modelos():
         print("─" * 80)
         print(f"🏆 MELHOR MODELO: {best_model['name']} (Acurácia: {best_model['accuracy']:.4f})")
 
+def fazer_predicao_personalizada():
+    """Permite fazer uma predição personalizada com um modelo escolhido"""
+    models = listar_modelos_salvos()
+    
+    if not models:
+        return
+    
+    try:
+        idx = int(input(f"\n👉 Escolha um modelo para predição (1-{len(models)}): ")) - 1
+        if not (0 <= idx < len(models)):
+            print("❌ Índice inválido!")
+            return
+        
+        model_path = models[idx]
+        model_data = None
+        
+        with open(model_path, 'rb') as f:
+            model_data = pickle.load(f)
+        
+        model_type = model_data.get('model_type', 'desconhecido')
+        
+        # Inicializar predictor
+        if model_type == 'logistic_regression':
+            predictor = LogisticRegressionGamePredictor()
+        elif model_type == 'knn':
+            predictor = KNNGamePredictor()
+        elif model_type in ['tree', 'forest']:
+            predictor = TreeGamePredictor(model_type=model_type)
+        else:
+            print(f"❌ Tipo de modelo não reconhecido: {model_type}")
+            return
+        
+        if predictor.load_model(model_path) and predictor.load_data():
+            print(f"\n✅ Modelo {model_type} carregado!")
+            
+            # Fazer predição em uma amostra aleatória
+            import random
+            sample_idx = random.randint(0, len(predictor.X_test) - 1)
+            
+            X_sample = predictor.X_test[sample_idx:sample_idx+1]
+            y_real = predictor.y_test[sample_idx]
+            
+            prediction = predictor.model.predict(X_sample)[0]
+            probabilities = predictor.model.predict_proba(X_sample)[0]
+            
+            print(f"\n🎯 PREDIÇÃO PERSONALIZADA:")
+            print("─" * 40)
+            print(f"Resultado Real: {predictor.class_names[y_real]}")
+            print(f"Resultado Predito: {predictor.class_names[prediction]}")
+            print(f"Correto: {'✅' if y_real == prediction else '❌'}")
+            
+            print(f"\n📊 PROBABILIDADES:")
+            for i, prob in enumerate(probabilities):
+                print(f"   {predictor.class_names[i]}: {prob:.2%}")
+            
+        else:
+            print("❌ Erro ao carregar modelo ou dados!")
+            
+    except ValueError:
+        print("❌ Por favor, digite um número válido!")
+    except Exception as e:
+        print(f"❌ Erro: {e}")
+
 def main():
     print("🚀 SISTEMA DE GERENCIAMENTO DE MODELOS TREINADOS")
     print("=" * 60)
@@ -179,10 +247,11 @@ def main():
         print("2. 📋 Mostrar informações de um modelo")
         print("3. 🧪 Testar um modelo com dados")
         print("4. 📊 Comparar todos os modelos")
-        print("5. 🚪 Sair")
+        print("5. 🎯 Fazer predição personalizada")
+        print("6. 🚪 Sair")
         
         try:
-            opcao = input("\n👉 Escolha uma opção (1-5): ").strip()
+            opcao = input("\n👉 Escolha uma opção (1-6): ").strip()
             
             if opcao == '1':
                 listar_modelos_salvos()
@@ -215,11 +284,14 @@ def main():
                 comparar_modelos()
                 
             elif opcao == '5':
+                fazer_predicao_personalizada()
+                
+            elif opcao == '6':
                 print("\n👋 Obrigado por usar o sistema!")
                 break
                 
             else:
-                print("❌ Opção inválida! Escolha entre 1-5.")
+                print("❌ Opção inválida! Escolha entre 1-6.")
                 
         except KeyboardInterrupt:
             print("\n\n👋 Sistema encerrado pelo usuário.")
@@ -227,5 +299,5 @@ def main():
         except Exception as e:
             print(f"❌ Erro inesperado: {e}")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
