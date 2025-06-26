@@ -19,6 +19,60 @@ def criar_variaveis_auxiliares(df):
     )
     return df
 
+def calcular_diferenca_gols_ultimo_jogo(df):
+    if 'data' in df.columns:
+        df['data'] = pd.to_datetime(df['data'], errors='coerce', dayfirst=True)
+        main_col = 'data'
+    elif 'rodada' in df.columns:
+        main_col = 'rodada'
+    elif 'rodata' in df.columns:
+        main_col = 'rodata'
+    else:
+        raise ValueError('Nenhuma coluna de data/rodada encontrada.')
+    
+    df = df.sort_values(main_col).reset_index(drop=True)
+    
+    team_performances = []
+    for idx, row in df.iterrows():
+        team_performances.append({
+            'team': row['mandante'],
+            main_col: row[main_col],
+            'goal_diff': row['mandante_Placar'] - row['visitante_Placar']
+        })
+        team_performances.append({
+            'team': row['visitante'],
+            main_col: row[main_col],
+            'goal_diff': row['visitante_Placar'] - row['mandante_Placar']
+        })
+    
+    df_performances = pd.DataFrame(team_performances)
+    df_performances = df_performances.sort_values(['team', main_col]).reset_index(drop=True)
+    
+    df_performances['goal_diff_last_game'] = df_performances.groupby('team')['goal_diff'].shift(1)
+    df_performances.fillna(0, inplace=True)
+    
+    df_with_last_goal_diff = df.merge(
+        df_performances[['team', main_col, 'goal_diff_last_game']],
+        left_on=['mandante', main_col],
+        right_on=['team', main_col],
+        how='left',
+        suffixes=('', '_mandante')
+    )
+    df_with_last_goal_diff.drop(columns=['team'], inplace=True)
+    df_with_last_goal_diff.rename(columns={'goal_diff_last_game': 'goal_diff_last_game_mandante'}, inplace=True)
+    
+    df_with_last_goal_diff = df_with_last_goal_diff.merge(
+        df_performances[['team', main_col, 'goal_diff_last_game']],
+        left_on=['visitante', main_col],
+        right_on=['team', main_col],
+        how='left',
+        suffixes=('', '_visitante')
+    )
+    df_with_last_goal_diff.drop(columns=['team'], inplace=True)
+    df_with_last_goal_diff.rename(columns={'goal_diff_last_game': 'goal_diff_last_game_visitante'}, inplace=True)
+    
+    return df_with_last_goal_diff
+
 def rolling_form_features(df, n_games=10):
     if 'data' in df.columns:
         df['data'] = pd.to_datetime(df['data'], errors='coerce', dayfirst=True)
@@ -79,11 +133,13 @@ def rolling_form_features(df, n_games=10):
 def pipeline_preprocessamento(path_csv, path_pkl):
     df = carregar_dados(path_csv)
     df = criar_variaveis_auxiliares(df)
+    df = calcular_diferenca_gols_ultimo_jogo(df)
     df_ml = rolling_form_features(df, n_games=10)
     features = [
         'rolling_goals_scored_10', 'rolling_goals_conceded_10', 'rolling_points_10',
         'rolling_goals_scored_10_visitante_form', 'rolling_goals_conceded_10_visitante_form', 'rolling_points_10_visitante_form',
-        'diff_rolling_goals_scored_10', 'diff_rolling_goals_conceded_10', 'diff_rolling_points_10'
+        'diff_rolling_goals_scored_10', 'diff_rolling_goals_conceded_10', 'diff_rolling_points_10',
+        'goal_diff_last_game_mandante', 'goal_diff_last_game_visitante'
     ]
     df_ml = df_ml.dropna(subset=features + ['vencedor'])
     X = df_ml[features]

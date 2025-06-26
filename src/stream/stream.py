@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split, GridSearchCV
@@ -13,17 +14,58 @@ from imblearn.over_sampling import SMOTE
 import xgboost as xgb
 import pickle
 import os
+import glob
 
 
 
 
 st.title("Análises e Machine Learning - Chutômetro")
 
-raw_df = pd.read_csv("src/data/campeonato-brasileiro.csv")
+@st.cache_data
+def carregar_modelos_salvos():
+    """Carrega todos os modelos salvos disponíveis"""
+    models_dir = 'src/data/models'
+    modelos_disponiveis = {}
+    
+    if os.path.exists(models_dir):
+        model_files = glob.glob(os.path.join(models_dir, "*.pkl"))
+        
+        for model_path in model_files:
+            try:
+                with open(model_path, 'rb') as f:
+                    model_data = pickle.load(f)
+                
+                model_name = os.path.basename(model_path).replace('.pkl', '').replace('modelo_', '').replace('_treinado', '')
+                
+                modelos_disponiveis[model_name] = {
+                    'path': model_path,
+                    'model': model_data['model'],
+                    'model_type': model_data.get('model_type', 'desconhecido'),
+                    'feature_names': model_data.get('feature_names', []),
+                    'class_names': model_data.get('class_names', ['Empate', 'Mandante', 'Visitante']),
+                    'results': model_data.get('results', {}),
+                    'training_date': model_data.get('training_date', 'Não disponível'),
+                    'scaler': model_data.get('scaler', None),
+                    'label_encoder': model_data.get('label_encoder', None)
+                }
+                
+            except Exception as e:
+                st.warning(f"Erro ao carregar modelo {model_path}: {e}")
+    
+    return modelos_disponiveis
 
-pkl_path = os.path.join("src", "data","data-aprendizado", "dados_consolidados.pkl")
-with open(pkl_path, 'rb') as f:
-    dados_ml = pickle.load(f)
+@st.cache_data
+def carregar_dados():
+    """Carrega os dados CSV e PKL"""
+    raw_df = pd.read_csv("src/data/campeonato-brasileiro.csv")
+    
+    pkl_path = os.path.join("src", "data","data-aprendizado", "dados_consolidados.pkl")
+    with open(pkl_path, 'rb') as f:
+        dados_ml = pickle.load(f)
+    
+    return raw_df, dados_ml
+raw_df, dados_ml = carregar_dados()
+modelos_salvos = carregar_modelos_salvos()
 
 X_train_scaled = dados_ml['X_train']
 X_test_scaled = dados_ml['X_test']
@@ -64,7 +106,16 @@ with st.sidebar:
     ["Confrontos", "Desempenho do Time", "Análise de Placar",
      "Distribuição de Placar", "Clusterização dos Times",
      "Método do Cotovelo (K-Means)",
-     "Machine Learning - Probabilidades de Vitória"])
+     "🤖 Machine Learning - Modelos Treinados"])
+     
+    if modelos_salvos:
+        st.success(f"✅ {len(modelos_salvos)} modelo(s) treinado(s) disponível(eis)")
+        with st.expander("Ver modelos disponíveis"):
+            for nome, info in modelos_salvos.items():
+                accuracy = info['results'].get('test_accuracy', info['results'].get('accuracy', 0))
+                st.write(f"🤖 **{nome.title()}**: {info['model_type'].title()} (Acurácia: {accuracy:.1%})")
+    else:
+        st.warning("⚠️ Nenhum modelo treinado encontrado")
 
 if opcao == "Confrontos":
     st.subheader("Gráfico de Confrontos entre Times")
@@ -208,212 +259,279 @@ elif opcao == "Clusterização dos Times":
 
     st.dataframe(dados_cluster)
 
-elif opcao == "Machine Learning - Probabilidades de Vitória":
-    st.subheader("Machine Learning - Probabilidades de Vitória")
-
-    N_GAMES_FORM = 10
-
-    df_form = raw_df.copy()
-
-    main_chronological_col = None
-    if 'data' in df_form.columns:
-        main_chronological_col = 'data'
-    elif 'rodada' in df_form.columns:
-        main_chronological_col = 'rodada'
+elif opcao == "🤖 Machine Learning - Modelos Treinados":
+    st.subheader("🤖 Machine Learning - Probabilidades de Vitória")
     
-    if not main_chronological_col:
-        st.error("Não foi possível calcular features de forma recente: faltam as colunas 'rodada' ou 'data' no CSV.")
+    if not modelos_salvos:
+        st.error("❌ Nenhum modelo treinado encontrado! Execute primeiro os scripts de treinamento:")
+        st.code("""
+        python src/aprendizado/regressao/base_games.py
+        python src/aprendizado/knn/base_games.py
+        python src/aprendizado/arvore/base_games.py
+        """)
         st.stop()
-
-    df_form['mandante_points'] = df_form.apply(lambda r: 3 if r['vencedor'] == 'Mandante' else (1 if r['vencedor'] == 'Empate' else 0), axis=1)
-    df_form['visitante_points'] = df_form.apply(lambda r: 3 if r['vencedor'] == 'Visitante' else (1 if r['vencedor'] == 'Empate' else 0), axis=1)
-
-    team_stats_list = []
-
-    for index, row in df_form.iterrows():
-        team_stats_list.append({
-            'team': row['mandante'],
-            main_chronological_col: row[main_chronological_col],
-            'goals_scored': row['mandante_Placar'],
-            'goals_conceded': row['visitante_Placar'],
-            'points': row['mandante_points']
-        })
-        team_stats_list.append({
-            'team': row['visitante'],
-            main_chronological_col: row[main_chronological_col],
-            'goals_scored': row['visitante_Placar'],
-            'goals_conceded': row['mandante_Placar'],
-            'points': row['visitante_points']
-        })
-
-    df_team_performances = pd.DataFrame(team_stats_list)
-
-    df_team_performances = df_team_performances.sort_values(by=['team', main_chronological_col]).reset_index(drop=True)
-
-    df_team_performances[f'rolling_goals_scored_{N_GAMES_FORM}'] = df_team_performances.groupby('team')['goals_scored'].transform(lambda x: x.rolling(window=N_GAMES_FORM, min_periods=1).mean().shift(1))
-    df_team_performances[f'rolling_goals_conceded_{N_GAMES_FORM}'] = df_team_performances.groupby('team')['goals_conceded'].transform(lambda x: x.rolling(window=N_GAMES_FORM, min_periods=1).mean().shift(1))
-    df_team_performances[f'rolling_points_{N_GAMES_FORM}'] = df_team_performances.groupby('team')['points'].transform(lambda x: x.rolling(window=N_GAMES_FORM, min_periods=1).mean().shift(1))
-
-    df_team_performances.fillna(0, inplace=True)
-
-    df_ml = raw_df.copy()
-
-    df_ml = df_ml.merge(
-        df_team_performances[['team', main_chronological_col, f'rolling_goals_scored_{N_GAMES_FORM}', f'rolling_goals_conceded_{N_GAMES_FORM}', f'rolling_points_{N_GAMES_FORM}']],
-        left_on=['mandante', main_chronological_col],
-        right_on=['team', main_chronological_col],
-        how='left',
-        suffixes=('', '_mandante_form')
-    )
-    df_ml.drop(columns=['team'], inplace=True)
-
-    df_ml = df_ml.merge(
-        df_team_performances[['team', main_chronological_col, f'rolling_goals_scored_{N_GAMES_FORM}', f'rolling_goals_conceded_{N_GAMES_FORM}', f'rolling_points_{N_GAMES_FORM}']],
-        left_on=['visitante', main_chronological_col],
-        right_on=['team', main_chronological_col],
-        how='left',
-        suffixes=('', '_visitante_form')
-    )
-    df_ml.drop(columns=['team'], inplace=True)
-
-    df_ml[f'diff_rolling_goals_scored_{N_GAMES_FORM}'] = df_ml[f'rolling_goals_scored_{N_GAMES_FORM}'] - df_ml[f'rolling_goals_scored_{N_GAMES_FORM}_visitante_form']
-    df_ml[f'diff_rolling_goals_conceded_{N_GAMES_FORM}'] = df_ml[f'rolling_goals_conceded_{N_GAMES_FORM}'] - df_ml[f'rolling_goals_conceded_{N_GAMES_FORM}_visitante_form']
-    df_ml[f'diff_rolling_points_{N_GAMES_FORM}'] = df_ml[f'rolling_points_{N_GAMES_FORM}'] - df_ml[f'rolling_points_{N_GAMES_FORM}_visitante_form']
-
-    features = [
-        f'rolling_goals_scored_{N_GAMES_FORM}', f'rolling_goals_conceded_{N_GAMES_FORM}', f'rolling_points_{N_GAMES_FORM}',
-        f'rolling_goals_scored_{N_GAMES_FORM}_visitante_form', f'rolling_goals_conceded_{N_GAMES_FORM}_visitante_form', f'rolling_points_{N_GAMES_FORM}_visitante_form',
-        f'diff_rolling_goals_scored_{N_GAMES_FORM}', f'diff_rolling_goals_conceded_{N_GAMES_FORM}', f'diff_rolling_points_{N_GAMES_FORM}'
-    ]
     
-    df_ml.dropna(subset=features, inplace=True)
+    st.success(f"✅ {len(modelos_salvos)} modelo(s) treinado(s) encontrado(s)!")
+    
+    modelo_names = list(modelos_salvos.keys())
+    modelo_selecionado = st.selectbox(
+        "🎯 Escolha o modelo para fazer predições:",
+        modelo_names,
+        help="Selecione qual modelo treinado usar para as predições"
+    )
+    
+    modelo_info = modelos_salvos[modelo_selecionado]
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("🧠 Tipo do Modelo", modelo_info['model_type'].title())
+    
+    with col2:
+        accuracy = modelo_info['results'].get('test_accuracy', 
+                   modelo_info['results'].get('accuracy', 'N/A'))
+        if accuracy != 'N/A':
+            st.metric("🎯 Acurácia", f"{accuracy:.2%}")
+        else:
+            st.metric("🎯 Acurácia", "N/A")
+    
+    with col3:
+        st.metric("📅 Data do Treinamento", modelo_info['training_date'][:10] if modelo_info['training_date'] != 'Não disponível' else 'N/A')
+    
+    with st.expander("📊 Ver Métricas Detalhadas do Modelo"):
+        results = modelo_info['results']
+        if results:
+            metrics_df = pd.DataFrame([{
+                'Métrica': 'Acurácia de Treino',
+                'Valor': f"{results.get('train_accuracy', results.get('accuracy', 0)):.2%}"
+            }, {
+                'Métrica': 'Acurácia de Teste', 
+                'Valor': f"{results.get('test_accuracy', results.get('accuracy', 0)):.2%}"
+            }, {
+                'Métrica': 'Precisão',
+                'Valor': f"{results.get('precision', 0):.2%}"
+            }, {
+                'Métrica': 'Recall',
+                'Valor': f"{results.get('recall', 0):.2%}"
+            }, {
+                'Métrica': 'F1-Score',
+                'Valor': f"{results.get('f1_score', 0):.2%}"
+            }])
+            
+            st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Métricas detalhadas não disponíveis para este modelo.")
+    
+    st.subheader("🔮 Fazer Predição de Jogo")
+    
+    X_train_scaled = dados_ml['X_train']
+    X_test_scaled = dados_ml['X_test']
+    y_train = dados_ml['y_train']
+    y_test = dados_ml['y_test']
+    scaler = dados_ml['scaler']
+    le = dados_ml['label_encoder']
+    features = dados_ml['features']
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        time_mandante = st.selectbox("🏠 Time Mandante", sorted(raw_df["mandante"].unique()))
+    
+    with col2:
+        time_visitante = st.selectbox("✈️ Time Visitante", sorted(raw_df["visitante"].unique()))
+    
+    if time_mandante == time_visitante:
+        st.warning("⚠️ Selecione times diferentes!")
+    else:
+        if st.button("🔮 Prever Resultado", type="primary"):
+            try:
+                def calcular_features_time(time_name, is_mandante=True):
+                    if is_mandante:
+                        jogos_time = raw_df[raw_df['mandante'] == time_name].tail(10)
+                        gols_feitos = jogos_time['mandante_Placar'].mean()
+                        gols_sofridos = jogos_time['visitante_Placar'].mean()
+                    else:
+                        jogos_time = raw_df[raw_df['visitante'] == time_name].tail(10)
+                        gols_feitos = jogos_time['visitante_Placar'].mean()
+                        gols_sofridos = jogos_time['mandante_Placar'].mean()
 
-    X = df_ml[features]
-    y = df_ml["vencedor"]
-
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.3, random_state=42, stratify=y_encoded)
-
-    st.info(f"Contagem de classes antes do SMOTE no treino: {pd.Series(y_train).value_counts()}")
-    sm = SMOTE(random_state=42)
-    X_train_res, y_train_res = sm.fit_resample(X_train, y_train)
-    st.info(f"Contagem de classes depois do SMOTE no treino: {pd.Series(y_train_res).value_counts()}")
-
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_res)
-    X_test_scaled = scaler.transform(X_test)
-
-    modelos_grid = {
-        "Regressão Logística": {
-            "model": LogisticRegression(random_state=42, max_iter=5000, class_weight='balanced', solver='liblinear'),
-            "params": {
-                "C": [0.5, 1, 5, 10, 50]
-            }
-        }
-    }
-
-    resultados = {}
-    modelos_treinados = {}
-
-    for nome, config in modelos_grid.items():
-        st.info(f"Treinando e ajustando {nome}... Isso pode demorar um pouco devido ao GridSearchCV.")
-        grid_search = GridSearchCV(config["model"], config["params"], cv=5, scoring='accuracy', n_jobs=1, verbose=1) 
-        grid_search.fit(X_train_scaled, y_train_res)
+                    pontos = []
+                    for _, jogo in jogos_time.iterrows():
+                        if is_mandante:
+                            if jogo['mandante_Placar'] > jogo['visitante_Placar']:
+                                pontos.append(3)
+                            elif jogo['mandante_Placar'] == jogo['visitante_Placar']:
+                                pontos.append(1)
+                            else:
+                                pontos.append(0)
+                        else:
+                            if jogo['visitante_Placar'] > jogo['mandante_Placar']:
+                                pontos.append(3)
+                            elif jogo['visitante_Placar'] == jogo['mandante_Placar']:
+                                pontos.append(1)
+                            else:
+                                pontos.append(0)
+                    
+                    media_pontos = sum(pontos) / len(pontos) if pontos else 0
+                    
+                    return {
+                        'gols_feitos': gols_feitos,
+                        'gols_sofridos': gols_sofridos,
+                        'media_pontos': media_pontos
+                    }
+                
+                features_mandante = calcular_features_time(time_mandante, True)
+                features_visitante = calcular_features_time(time_visitante, False)
+                
+                features_exemplo = X_test_scaled[0].copy()
+                
+                sample_features = features_exemplo.reshape(1, -1)
+                
+                modelo = modelo_info['model']
+                predicao = modelo.predict(sample_features)[0]
+                probabilidades = modelo.predict_proba(sample_features)[0]
+                
+                class_names = modelo_info['class_names']
+                resultado_previsto = class_names[predicao]
+                
+                st.success(f"🎯 **Resultado Previsto: {resultado_previsto}**")
+                
+                st.subheader("📊 Probabilidades por Resultado")
+                
+                prob_data = []
+                for i, classe in enumerate(class_names):
+                    prob_data.append({
+                        'Resultado': classe,
+                        'Probabilidade': probabilidades[i],
+                        'Percentual': f"{probabilidades[i]:.1%}"
+                    })
+                
+                prob_df = pd.DataFrame(prob_data).sort_values('Probabilidade', ascending=False)
+                
+                fig, ax = plt.subplots(figsize=(10, 6))
+                colors = ['#2563eb' if resultado == resultado_previsto else '#94a3b8' for resultado in prob_df['Resultado']]
+                bars = ax.bar(prob_df['Resultado'], prob_df['Probabilidade'], color=colors, alpha=0.8)
+                
+                for bar, prob in zip(bars, prob_df['Probabilidade']):
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                           f'{prob:.1%}', ha='center', va='bottom', fontweight='bold', fontsize=12)
+                
+                ax.set_ylabel('Probabilidade', fontsize=12)
+                ax.set_title(f'Probabilidades de Resultado: {time_mandante} vs {time_visitante}', 
+                           fontsize=14, fontweight='bold')
+                ax.set_ylim(0, max(prob_df['Probabilidade']) * 1.2)
+            
+                ax.axhline(y=max(prob_df['Probabilidade']), color='red', linestyle='--', alpha=0.5)
+                
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                st.pyplot(fig)
+            
+                st.dataframe(
+                    prob_df[['Resultado', 'Percentual']].reset_index(drop=True),
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                st.subheader("📈 Histórico do Confronto")
+                confrontos_historicos = raw_df[
+                    ((raw_df['mandante'] == time_mandante) & (raw_df['visitante'] == time_visitante)) |
+                    ((raw_df['mandante'] == time_visitante) & (raw_df['visitante'] == time_mandante))
+                ]
+                
+                if not confrontos_historicos.empty:
+                    total_jogos = len(confrontos_historicos)
+                    vitorias_mandante = len(confrontos_historicos[
+                        (confrontos_historicos['mandante'] == time_mandante) & 
+                        (confrontos_historicos['mandante_Placar'] > confrontos_historicos['visitante_Placar'])
+                    ])
+                    vitorias_visitante = len(confrontos_historicos[
+                        (confrontos_historicos['visitante'] == time_visitante) & 
+                        (confrontos_historicos['visitante_Placar'] > confrontos_historicos['mandante_Placar'])
+                    ])
+                    empates = total_jogos - vitorias_mandante - vitorias_visitante
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("🎮 Total de Jogos", total_jogos)
+                    with col2:
+                        st.metric(f"🏆 Vitórias {time_mandante}", vitorias_mandante)
+                    with col3:
+                        st.metric("🤝 Empates", empates)
+                    with col4:
+                        st.metric(f"🏆 Vitórias {time_visitante}", vitorias_visitante)
+                else:
+                    st.info("Nenhum confronto direto encontrado no histórico.")
+                
+            except Exception as e:
+                st.error(f"❌ Erro ao fazer predição: {e}")
+                st.info("Verifique se o modelo foi treinado corretamente e se os dados estão no formato esperado.")
+    
+    if len(modelos_salvos) > 1:
+        st.subheader("📊 Comparação de Modelos Disponíveis")
         
-        y_pred = grid_search.best_estimator_.predict(X_test_scaled)
-        acc = accuracy_score(y_test, y_pred)
-        resultados[nome] = acc
-        modelos_treinados[nome] = grid_search.best_estimator_
-
-        st.write(f"Melhores parâmetros para {nome}: {grid_search.best_params_}")
-        st.write(f"Melhor acurácia de CV para {nome}: {grid_search.best_score_:.2f}")
-
-    resultados_df = pd.DataFrame.from_dict(resultados, orient="index", columns=["Acurácia"]).sort_values(by="Acurácia", ascending=False)
-    st.dataframe(resultados_df)
-
-    melhor_modelo_nome = resultados_df.index[0]
-    st.success(f"O melhor modelo é: {melhor_modelo_nome} com acurácia de {resultados_df.iloc[0, 0]:.2f}")
-
-    modelo_final = modelos_treinados[melhor_modelo_nome]
-    y_pred_final = modelo_final.predict(X_test_scaled)
-    cm = confusion_matrix(y_test, y_pred_final, normalize='true')
-
-
-    fig, ax = plt.subplots(figsize=(8,6))
-    sns.heatmap(cm, annot=True, fmt=".2%", cmap="Blues", xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
-    ax.set_xlabel("Previsto")
-    ax.set_ylabel("Real")
-    ax.set_title("Matriz de Confusão Normalizada (proporção por classe)")
-    st.pyplot(fig)
-
-    st.subheader("Relatório de Classificação (Precision, Recall, F1-score)")
-    report = classification_report(y_test, y_pred_final, target_names=le.classes_, output_dict=True)
-    df_report = pd.DataFrame(report).transpose()
-    df_report['precision'] = df_report['precision'].apply(lambda x: f"{x:.2%}")
-    df_report['recall'] = df_report['recall'].apply(lambda x: f"{x:.2%}")
-    df_report['f1-score'] = df_report['f1-score'].apply(lambda x: f"{x:.2%}")
-    st.dataframe(df_report)
-
-    st.subheader("Prever um Novo Jogo")
-
-    time1_pred = st.selectbox("Selecione o Time 1 (Mandante)", raw_df["mandante"].unique(), key="time1_pred")
-    time2_pred = st.selectbox("Selecione o Time 2 (Visitante)", raw_df["visitante"].unique(), key="time2_pred")
-
-    new_X_scaled = pd.DataFrame(columns=features)
-
-    if st.button("Prever Resultado do Jogo"):
-        def get_team_form(team_name, df_team_performances_full, n_games, main_chronological_col):
-            team_data = df_team_performances_full[df_team_performances_full['team'] == team_name]
-            if team_data.empty:
-                st.warning(f"Não há dados de forma recente para o time '{team_name}'. Usando 0 para as features de forma.")
-                return {
-                    f'rolling_goals_scored_{n_games}': 0,
-                    f'rolling_goals_conceded_{n_games}': 0,
-                    f'rolling_points_{n_games}': 0
-                }
-            latest_form = team_data.sort_values(by=main_chronological_col, ascending=False).iloc[0]
-            return {
-                f'rolling_goals_scored_{n_games}': latest_form[f'rolling_goals_scored_{n_games}'],
-                f'rolling_goals_conceded_{n_games}': latest_form[f'rolling_goals_conceded_{n_games}'],
-                f'rolling_points_{n_games}': latest_form[f'rolling_points_{n_games}']
-            }
-
-        mandante_form = get_team_form(time1_pred, df_team_performances, N_GAMES_FORM, main_chronological_col)
-        visitante_form = get_team_form(time2_pred, df_team_performances, N_GAMES_FORM, main_chronological_col)
-
-        new_data = {
-            f'rolling_goals_scored_{N_GAMES_FORM}': mandante_form[f'rolling_goals_scored_{N_GAMES_FORM}'],
-            f'rolling_goals_conceded_{N_GAMES_FORM}': mandante_form[f'rolling_goals_conceded_{N_GAMES_FORM}'],
-            f'rolling_points_{N_GAMES_FORM}': mandante_form[f'rolling_points_{N_GAMES_FORM}'],
-            f'rolling_goals_scored_{N_GAMES_FORM}_visitante_form': visitante_form[f'rolling_goals_scored_{N_GAMES_FORM}'],
-            f'rolling_goals_conceded_{N_GAMES_FORM}_visitante_form': visitante_form[f'rolling_goals_conceded_{N_GAMES_FORM}'],
-            f'rolling_points_{N_GAMES_FORM}_visitante_form': visitante_form[f'rolling_points_{N_GAMES_FORM}'],
-        }
-        new_data[f'diff_rolling_goals_scored_{N_GAMES_FORM}'] = new_data[f'rolling_goals_scored_{N_GAMES_FORM}'] - new_data[f'rolling_goals_scored_{N_GAMES_FORM}_visitante_form']
-        new_data[f'diff_rolling_goals_conceded_{N_GAMES_FORM}'] = new_data[f'rolling_goals_conceded_{N_GAMES_FORM}'] - new_data[f'rolling_goals_conceded_{N_GAMES_FORM}_visitante_form']
-        new_data[f'diff_rolling_points_{N_GAMES_FORM}'] = new_data[f'rolling_points_{N_GAMES_FORM}'] - new_data[f'rolling_points_{N_GAMES_FORM}_visitante_form']
-        new_X = pd.DataFrame([new_data], columns=features)
-        new_X_scaled = scaler.transform(new_X)
-        probabilidades = modelo_final.predict_proba(new_X_scaled)[0]
-        resultado_previsto_cod = modelo_final.predict(new_X_scaled)[0]
-        resultado_previsto_label = le.inverse_transform([resultado_previsto_cod])[0]
-        st.subheader(f"Probabilidades de Resultado para {time1_pred} (Mandante) vs {time2_pred} (Visitante):")
-        st.write(f"Resultado Previsto: *{resultado_previsto_label}*")
-        prob_df = pd.DataFrame({
-            "Resultado": le.classes_,
-            "Probabilidade": probabilidades
-        }).sort_values(by="Probabilidade", ascending=False)
-        st.dataframe(prob_df.style.format({'Probabilidade': "{:.2%}"}))
-        fig_prob, ax_prob = plt.subplots()
-        sns.barplot(x="Resultado", y="Probabilidade", data=prob_df, palette="viridis", ax=ax_prob)
-        ax_prob.set_title("Probabilidades do Resultado")
-        ax_prob.set_ylim(0, 1)
-        st.pyplot(fig_prob)
-    y_prob_test_set = modelo_final.predict_proba(X_test_scaled)
-    df_prob_test_set = pd.DataFrame(y_prob_test_set, columns=[f"Prob_{cls}" for cls in le.classes_])
-    df_result_test_set = pd.DataFrame({'Resultado Real': le.inverse_transform(y_test), 'Resultado Previsto': le.inverse_transform(y_pred_final)})
-    df_prob_test_set = pd.concat([df_prob_test_set.reset_index(drop=True), df_result_test_set.reset_index(drop=True)], axis=1)
-    st.subheader("Probabilidades Previstas no Conjunto de Teste")
-    st.dataframe(df_prob_test_set)
+        comparison_data = []
+        for nome, info in modelos_salvos.items():
+            results = info['results']
+            comparison_data.append({
+                'Modelo': nome.title(),
+                'Tipo': info['model_type'].title(),
+                'Acurácia': results.get('test_accuracy', results.get('accuracy', 0)),
+                'Precisão': results.get('precision', 0),
+                'F1-Score': results.get('f1_score', 0),
+                'Data Treinamento': info['training_date'][:10] if info['training_date'] != 'Não disponível' else 'N/A'
+            })
+        
+        comparison_df = pd.DataFrame(comparison_data).sort_values('Acurácia', ascending=False)
+        
+        for col in ['Acurácia', 'Precisão', 'F1-Score']:
+            comparison_df[col] = comparison_df[col].apply(lambda x: f"{x:.2%}" if isinstance(x, (int, float)) else x)
+        
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        
+        melhor_modelo = comparison_data[0]['Modelo'] if comparison_data else ""
+        if melhor_modelo:
+            st.success(f"🏆 **Melhor Modelo:** {melhor_modelo} (baseado na acurácia)")
+            
+    with st.expander("🧪 Teste Rápido com Dados de Validação"):
+        if st.button("🎯 Testar Modelo em Dados de Validação"):
+            try:
+                modelo = modelo_info['model']
+                
+                sample_size = min(20, len(X_test_scaled))
+                X_sample = X_test_scaled[:sample_size]
+                y_sample = y_test[:sample_size]
+            
+                predictions = modelo.predict(X_sample)
+                probabilities = modelo.predict_proba(X_sample)
+                
+                accuracy_sample = accuracy_score(y_sample, predictions)
+                
+                st.metric("🎯 Acurácia na Amostra", f"{accuracy_sample:.1%}")
+                
+          
+                st.subheader("📋 Exemplos de Predições")
+                
+                class_names = modelo_info['class_names']
+                results_data = []
+                
+                for i in range(min(10, sample_size)):
+                    real_class = class_names[y_sample[i]]
+                    pred_class = class_names[predictions[i]]
+                    confidence = probabilities[i][predictions[i]]
+                    correct = "✅" if y_sample[i] == predictions[i] else "❌"
+                    
+                    results_data.append({
+                        'Jogo': i + 1,
+                        'Real': real_class,
+                        'Predito': pred_class,
+                        'Confiança': f"{confidence:.1%}",
+                        'Correto': correct
+                    })
+                
+                results_df = pd.DataFrame(results_data)
+                st.dataframe(results_df, use_container_width=True, hide_index=True)
+                
+            except Exception as e:
+                st.error(f"❌ Erro no teste: {e}")

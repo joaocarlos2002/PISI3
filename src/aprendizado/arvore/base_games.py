@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import os
+import time
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, validation_curve
@@ -26,8 +27,22 @@ class TreeGamePredictor:
         self.figures_path = f'src/data/figuras/arvore'
         self.class_names = ['Empate', 'Mandante', 'Visitante']
 
+    def show_progress_bar(self, current, total, operation="Processando"):
+        bar_length = 40
+        filled_length = int(bar_length * current // total)
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        percent = 100 * (current / float(total))
+        print(f'\r{operation}: |{bar}| {percent:.1f}% ({current}/{total})', end='', flush=True)
+        if current == total:
+            print() 
+
     def load_data(self):
+        print("🔄 Carregando dados...")
         try:
+            for i in range(1, 4):
+                self.show_progress_bar(i, 3, "Carregando dados")
+                time.sleep(0.3)
+            
             with open(self.data_path, 'rb') as f:
                 data = pickle.load(f)
             self.X_train = data['X_train']
@@ -35,12 +50,19 @@ class TreeGamePredictor:
             self.y_train = data['y_train']
             self.y_test = data['y_test']
             self.feature_names = data.get('features', None)
+            print("✅ Dados carregados com sucesso!")
             return True
         except Exception as e:
-            print(f"Erro ao carregar dados: {e}")
+            print(f"❌ Erro ao carregar dados: {e}")
             return False
 
     def optimize_hyperparameters(self):
+        print("🔧 Otimizando hiperparâmetros...")
+        
+        for i in range(1, 4):
+            self.show_progress_bar(i, 3, "Preparando grid search")
+            time.sleep(0.2)
+        
         model = DecisionTreeClassifier() if self.model_type == 'tree' else RandomForestClassifier()
         param_grid = {
             'max_depth': [3, 5, 10, 20, None],
@@ -50,18 +72,37 @@ class TreeGamePredictor:
         if self.model_type == 'forest':
             param_grid['n_estimators'] = [50, 100, 200]
 
+        total_combinations = 1
+        for values in param_grid.values():
+            total_combinations *= len(values)
+        
+        print(f"🔍 Testando {total_combinations} combinações de hiperparâmetros...")
+        
+        # Simular progresso do grid search
+        for i in range(1, 11):
+            self.show_progress_bar(i, 10, "Grid Search")
+            time.sleep(0.5)
+        
         grid = GridSearchCV(model, param_grid, cv=StratifiedKFold(5, shuffle=True, random_state=42), scoring='accuracy', n_jobs=-1)
         grid.fit(self.X_train, self.y_train)
         self.model = grid.best_estimator_
         self.best_params = grid.best_params_
+        print("✅ Otimização concluída!")
 
     def train_model(self):
+        print("🚀 Treinando modelo...")
         if not self.model:
             if self.model_type == 'tree':
                 self.model = DecisionTreeClassifier()
             else:
                 self.model = RandomForestClassifier()
+    
+        for i in range(1, 6):
+            self.show_progress_bar(i, 5, "Treinamento")
+            time.sleep(0.3)
+            
         self.model.fit(self.X_train, self.y_train)
+        print("✅ Modelo treinado com sucesso!")
 
     def evaluate_model(self):
         y_pred = self.model.predict(self.X_test)
@@ -75,14 +116,64 @@ class TreeGamePredictor:
         print(classification_report(self.y_test, y_pred, target_names=['Empate', 'Mandante', 'Visitante']))
         return self.results
 
-    def show_feature_importance(self, top_n=10):
+    def show_feature_importance(self, top_n=15):
         if hasattr(self.model, 'feature_importances_'):
+            model_name = 'Árvore de Decisão' if self.model_type == 'tree' else 'Floresta Aleatória'
+            print(f"\n🌳 ANÁLISE DE IMPORTÂNCIA DAS FEATURES ({model_name.upper()}):")
+            print("=" * 80)
+            
             importances = pd.Series(self.model.feature_importances_, index=self.feature_names)
-            top_features = importances.sort_values(ascending=False).head(top_n)
-            print(f"\nTop {top_n} features mais importantes:")
-            print(top_features.to_string())
+            all_features = importances.sort_values(ascending=False)
+            
+            print(f"\n📊 RANKING DE IMPORTÂNCIA DAS VARIÁVEIS ({model_name}):")
+            print("─" * 80)
+            print(f"{'#':<3} {'📈':<2} {'VARIÁVEL':<40} {'IMPORTÂNCIA':<12} {'%':<8} {'NÍVEL':<8}")
+            print("─" * 80)
+            
+            for i, (feature, importance) in enumerate(all_features.items(), 1):
+                if importance > 0.15:
+                    icon, level, color = "🔴", "ALTA", "\033[91m"
+                elif importance > 0.05:
+                    icon, level, color = "🟡", "MÉDIA", "\033[93m"
+                else:
+                    icon, level, color = "🟢", "BAIXA", "\033[92m"
+                
+                percentage = importance * 100
+                reset_color = "\033[0m"
+                print(f"{i:2d}  {icon}  {color}{feature:<40}{reset_color} {importance:<12.6f} {percentage:6.2f}%  {level}")
+            
+            print("─" * 80)
+            print(f"\n ESTATÍSTICAS RESUMIDAS:")
+            print(f"   • Total de variáveis analisadas: {len(all_features)}")
+            print(f"   • Variável mais importante: '{all_features.index[0]}' ({all_features.iloc[0]:.4f})")
+            print(f"   • Importância média: {all_features.mean():.4f}")
+            print(f"   • Distribuição de níveis:")
+            
+            alta_count = (all_features > 0.15).sum()
+            media_count = ((all_features > 0.05) & (all_features <= 0.15)).sum()
+            baixa_count = (all_features <= 0.05).sum()
+            
+            print(f"     🔴 ALTA (>15%): {alta_count} variáveis")
+            print(f"     🟡 MÉDIA (5-15%): {media_count} variáveis") 
+            print(f"     🟢 BAIXA (<5%): {baixa_count} variáveis")
+            
+            print(f"\n🎯 TOP {top_n} VARIÁVEIS MAIS IMPORTANTES:")
+            print("─" * 60)
+            top_features = all_features.head(top_n)
+            for i, (feature, importance) in enumerate(top_features.items(), 1):
+                bar_length = int(30 * importance / all_features.max())
+                bar = "█" * bar_length + "░" * (30 - bar_length)
+                print(f"{i:2d}. {feature:<35} |{bar}| {importance:.4f}")
+            
+            print(f"\n💡 INTERPRETAÇÃO ({model_name}):")
+            print("   • Valores representam a redução média de impureza (Gini/Entropia)")
+            print("   • Soma total deve ser ≈ 1.0 (normalizado)")
+            print("   • Features com maior importância têm mais poder preditivo")
+            
+            return all_features
         else:
-            print("Este modelo não suporta extração de importância de features.")
+            print("❌ Este modelo não suporta extração de importância de features.")
+            return None
 
     def create_figures_directory(self):
         if not os.path.exists(self.figures_path):
@@ -241,35 +332,168 @@ class TreeGamePredictor:
     def generate_all_figures(self):
         self.create_figures_directory()
         model_name = 'Árvore de Decisão' if self.model_type == 'tree' else 'Floresta Aleatória'
-        print(f"Gerando figuras estatísticas para {model_name}...")
-        self.plot_confusion_matrix()
-        print("Matriz de confusão salva")
-        self.plot_feature_importance()
-        print("Importância das features salva")
+        print(f"\n📊 Gerando figuras estatísticas para {model_name}...")
+        
+        figures_to_generate = [
+            ("Matriz de confusão", self.plot_confusion_matrix),
+            ("Importância das features", self.plot_feature_importance),
+            ("Curva de validação", self.plot_validation_curve_depth),
+            ("Comparação de métricas", self.plot_metrics_comparison),
+            ("Hiperparâmetros", self.plot_hyperparameters),
+            ("Distribuição das classes", self.plot_class_distribution)
+        ]
+        
         if self.model_type == 'tree':
-            self.plot_tree_visualization()
-            print("Visualização da árvore salva")
-        self.plot_validation_curve_depth()
-        print("Curva de validação salva")
-        self.plot_metrics_comparison()
-        print("Comparação de métricas salva")
-        self.plot_hyperparameters()
-        print("Melhores hiperparâmetros salvos")
-        self.plot_class_distribution()
-        print("Distribuição das classes salva")
-        print(f"\nTodas as figuras foram salvas em: {self.figures_path}")
+            figures_to_generate.insert(2, ("Visualização da árvore", self.plot_tree_visualization))
+        
+        for i, (name, func) in enumerate(figures_to_generate, 1):
+            self.show_progress_bar(i, len(figures_to_generate), "Gerando figuras")
+            func()
+            time.sleep(0.2)
+        
+        print(f"\n✅ Todas as figuras foram salvas em: {self.figures_path}")
 
+    def save_model(self, filename=None):
+        if self.model is None:
+            print("❌ Nenhum modelo foi treinado ainda.")
+            return False
+        
+        if filename is None:
+            model_name = 'tree' if self.model_type == 'tree' else 'forest'
+            filename = f'src/data/models/modelo_{model_name}_treinado.pkl'
+        
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        
+        try:
+            model_data = {
+                'model': self.model,
+                'model_type': self.model_type,
+                'best_params': self.best_params,
+                'feature_names': self.feature_names,
+                'class_names': self.class_names,
+                'results': self.results,
+                'training_date': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            with open(filename, 'wb') as f:
+                pickle.dump(model_data, f)
+            
+            model_name = 'Árvore de Decisão' if self.model_type == 'tree' else 'Floresta Aleatória'
+            print(f"💾 Modelo {model_name} salvo com sucesso em: {filename}")
+            print(f"   • Acurácia: {self.results.get('accuracy', 0):.4f}")
+            print(f"   • Data do treinamento: {model_data['training_date']}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erro ao salvar modelo: {e}")
+            return False
+
+    def load_model(self, filename):
+        try:
+            with open(filename, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            self.model = model_data['model']
+            self.model_type = model_data.get('model_type', self.model_type)
+            self.best_params = model_data.get('best_params', None)
+            self.feature_names = model_data.get('feature_names', None)
+            self.class_names = model_data.get('class_names', ['Empate', 'Mandante', 'Visitante'])
+            self.results = model_data.get('results', {})
+            
+            model_name = 'Árvore de Decisão' if self.model_type == 'tree' else 'Floresta Aleatória'
+            print(f"📂 Modelo {model_name} carregado com sucesso de: {filename}")
+            print(f"   • Data do treinamento: {model_data.get('training_date', 'Não disponível')}")
+            print(f"   • Acurácia: {self.results.get('accuracy', 0):.4f}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Erro ao carregar modelo: {e}")
+            return False
+
+    def predict_from_saved_model(self, model_path, X_new):
+        """Carrega um modelo salvo e faz predições em novos dados"""
+        if self.load_model(model_path):
+            try:
+                predictions = self.model.predict(X_new)
+                probabilities = self.model.predict_proba(X_new) if hasattr(self.model, 'predict_proba') else None
+                
+                print(f"🔮 Predições realizadas com sucesso!")
+                print(f"   • {len(predictions)} predições feitas")
+            
+                unique, counts = np.unique(predictions, return_counts=True)
+                for class_idx, count in zip(unique, counts):
+                    class_name = self.class_names[class_idx] if class_idx < len(self.class_names) else f"Classe {class_idx}"
+                    print(f"   • {class_name}: {count} predições")
+                
+                return predictions, probabilities
+            except Exception as e:
+                print(f"❌ Erro ao fazer predições: {e}")
+                return None, None
+        else:
+            return None, None
+
+    def get_model_info(self, model_path):
+        """Mostra informações sobre um modelo salvo sem carregá-lo completamente"""
+        try:
+            with open(model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            
+            model_name = 'Árvore de Decisão' if model_data.get('model_type') == 'tree' else 'Floresta Aleatória'
+            print(f"\n📋 INFORMAÇÕES DO MODELO ({model_path}):")
+            print("=" * 60)
+            print(f"• Tipo: {model_name}")
+            print(f"• Data do treinamento: {model_data.get('training_date', 'Não disponível')}")
+            print(f"• Acurácia: {model_data.get('results', {}).get('accuracy', 0):.4f}")
+            print(f"• Precisão: {model_data.get('results', {}).get('precision', 0):.4f}")
+            print(f"• Recall: {model_data.get('results', {}).get('recall', 0):.4f}")
+            print(f"• F1-Score: {model_data.get('results', {}).get('f1_score', 0):.4f}")
+            
+            if 'best_params' in model_data and model_data['best_params']:
+                print(f"• Melhores hiperparâmetros:")
+                for param, value in model_data['best_params'].items():
+                    print(f"  - {param}: {value}")
+            
+            if 'feature_names' in model_data and model_data['feature_names']:
+                print(f"• Número de features: {len(model_data['feature_names'])}")
+            
+            return model_data
+            
+        except Exception as e:
+            print(f"❌ Erro ao ler informações do modelo: {e}")
+            return None
 def main_tree(model_type='tree'):
-    print(f"Iniciando modelo: {'Árvore de Decisão' if model_type == 'tree' else 'Floresta Aleatória'}")
+    model_name = 'Árvore de Decisão' if model_type == 'tree' else 'Floresta Aleatória'
+    print(f"\n🌳 Iniciando análise com {model_name}")
+    print("=" * 50)
+    
     predictor = TreeGamePredictor(model_type=model_type)
+    
     if not predictor.load_data():
         return
+    
+
     predictor.optimize_hyperparameters()
+    
+
     predictor.train_model()
+    
+
+    print("📈 Avaliando modelo...")
     results = predictor.evaluate_model()
+    
+
+    print("\n🔍 Analisando importância das features...")
     predictor.show_feature_importance()
-    print(f"\nAcurácia final: {results['accuracy']:.4f}")
+    
+    print(f"\n🎯 Acurácia final: {results['accuracy']:.4f}")
+    
+    print("\n💾 Salvando modelo treinado...")
+    predictor.save_model()
+    
     predictor.generate_all_figures()
+    
+    print(f"\n✅ Análise de {model_name} concluída!")
+    print("=" * 50)
     return predictor
 
 if __name__ == "__main__":
