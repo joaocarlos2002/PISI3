@@ -103,9 +103,9 @@ with st.sidebar:
     time_visitante_filtro = st.selectbox("Selecione o time visitante", raw_df["visitante"].unique())
 
     opcao = st.selectbox("Selecione o Tipo de Análise",
-    ["Confrontos", "Desempenho do Time", "Análise de Placar",
-     "Distribuição de Placar", "Clusterização dos Times",
-     "Método do Cotovelo (K-Means)",
+    ["🥋 Confrontos", "🚀 Desempenho do Time", "🔎 Análise de Placar",
+     "📦 Distribuição de Placar", "🔬 Clusterização dos Times",
+     "📉 Método do Cotovelo (K-Means)",
      "🤖 Machine Learning - Modelos Treinados"])
      
     if modelos_salvos:
